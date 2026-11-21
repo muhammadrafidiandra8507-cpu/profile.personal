@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pertumbuhan Bunga</title>
+<style>
+:root {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  --bg: #f3f6ee;
+  --ink: #23301f;
+  --muted: #5d6b57;
+  --btn: #2f7d3b;
+  --btn-ink: #ffffff;
+  --btn-alt: #dfe7d6;
+  --sky: #aad7f0;
+  --soil: #644128;
+  --track: #cfd8c6;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131a14; --ink: #e6efe1; --muted: #9bab94;
+    --btn: #4fae5c; --btn-ink: #0d1a0f; --btn-alt: #243026;
+    --sky: #1d3550; --soil: #4a2f1c; --track: #2c3a2e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131a14; --ink: #e6efe1; --muted: #9bab94;
+  --btn: #4fae5c; --btn-ink: #0d1a0f; --btn-alt: #243026;
+  --sky: #1d3550; --soil: #4a2f1c; --track: #2c3a2e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  min-height: 100vh;
+}
+h1 { font-size: 1.5rem; margin: 0; font-weight: 600; }
+.status { margin: 0; color: var(--muted); font-size: 0.95rem; min-height: 1.4em; }
+canvas {
+  width: 100%;
+  max-width: 400px;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 10px;
+  touch-action: none;
+}
+.row { display: flex; gap: 10px; }
+button {
+  font: inherit;
+  font-size: 1rem;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--btn);
+  color: var(--btn-ink);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+button.alt { background: var(--btn-alt); color: var(--ink); }
+button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<h1>Pertumbuhan Bunga</h1>
+<p class="status" id="status">Tahan tombol Siram untuk mempercepat pertumbuhan</p>
+<canvas id="c" width="400" height="600"></canvas>
+<div class="row">
+  <button id="water">Siram (tahan)</button>
+  <button id="reset" class="alt">Ulangi</button>
+</div>
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const statusEl = document.getElementById("status");
+const W = 400, H = 600, SOIL_Y = 480, STEM_MAX = 240;
+const AUTO = 0.03, WATER = 0.15;
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+const ease = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+const stage = (g, a, b) => ease((g - a) / (b - a));
+
+function leaf(bx, by, len, angle, color) {
+  if (len < 2) return;
+  const dx = Math.cos(angle), dy = Math.sin(angle), nx = -dy, ny = dx;
+  const L = [], R = [];
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20, w = Math.sin(Math.PI * t) * len * 0.28;
+    const px = bx + dx * len * t, py = by + dy * len * t;
+    L.push([px + nx * w, py + ny * w]);
+    R.push([px - nx * w, py - ny * w]);
+  }
+  ctx.beginPath();
+  [...L, ...R.reverse()].forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+const stemPoint = (h, sway, f) => [W / 2 + sway * f * f, SOIL_Y - h * f];
+
+function drawFlower(g, t) {
+  const stemP = stage(g, 0.05, 0.55), leafP = stage(g, 0.30, 0.65), bloomP = stage(g, 0.60, 1);
+  if (stemP < 0.05) {
+    ctx.fillStyle = "#46301a";
+    ctx.beginPath(); ctx.ellipse(W / 2, SOIL_Y - 1, 8, 5, 0, 0, Math.PI * 2); ctx.fill();
+    return;
+  }
+  const h = STEM_MAX * stemP, sway = Math.sin(t * 1.5) * 10 * stemP;
+  const pts = Array.from({ length: 21 }, (_, i) => stemPoint(h, sway, i / 20));
+  ctx.strokeStyle = "#3c8c3c"; ctx.lineWidth = 6; ctx.lineCap = "round";
+  ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+  const [tx, ty] = pts[20];
+
+  [[0.35, -1], [0.55, 1]].forEach(([f, side]) => {
+    const [bx, by] = stemPoint(h, sway, f);
+    leaf(bx, by, 60 * leafP, side === -1 ? Math.PI + 0.5 : -0.5, "#50aa50");
+  });
+
+  if (bloomP > 0) {
+    const n = 8, len = 45 * bloomP, spin = Math.sin(t) * 0.05;
+    [[0, "#e65a8c", 1], [1, "#fa82af", 0.75]].forEach(([layer, color, s]) => {
+      for (let k = 0; k < n; k++) {
+        leaf(tx, ty, len * s, (2 * Math.PI * k) / n + (layer * Math.PI) / n + spin, color);
+      }
+    });
+    ctx.fillStyle = "#f0be32";
+    ctx.beginPath(); ctx.arc(tx, ty, 12 * bloomP + 2, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.fillStyle = "#e65a8c";
+    ctx.beginPath(); ctx.arc(tx, ty, 6, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawWater(t) {
+  ctx.strokeStyle = "#3c82dc"; ctx.lineWidth = 2;
+  for (let i = 0; i < 6; i++) {
+    const x = 120 + i * 32 + Math.sin(t * 6 + i) * 4;
+    const y = ((t * 350 + i * 60) % (SOIL_Y - 100)) + 100;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 10); ctx.stroke();
+  }
+}
+
+let growth = 0, time = 0, watering = false, last = performance.now();
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now; time += dt;
+  growth = Math.min(1, growth + (watering ? WATER : AUTO) * dt);
+
+  ctx.fillStyle = css("--sky"); ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = css("--soil"); ctx.fillRect(0, SOIL_Y, W, H - SOIL_Y);
+  drawFlower(growth, time);
+  if (watering && growth < 1) drawWater(time);
+
+  ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(20, 20, 360, 12);
+  ctx.fillStyle = "#5ac85a"; ctx.fillRect(20, 20, 360 * growth, 12);
+
+  statusEl.textContent = growth >= 1
+    ? "Mekar penuh. Tekan Ulangi untuk menanam lagi"
+    : "Tahan tombol Siram untuk mempercepat pertumbuhan";
+  requestAnimationFrame(frame);
+}
+
+const waterBtn = document.getElementById("water");
+const setWater = (v) => (watering = v);
+waterBtn.addEventListener("pointerdown", () => setWater(true));
+["pointerup", "pointerleave", "pointercancel"].forEach((e) => waterBtn.addEventListener(e, () => setWater(false)));
+document.getElementById("reset").addEventListener("click", () => (growth = 0));
+addEventListener("keydown", (e) => {
+  if (e.code === "Space") { e.preventDefault(); setWater(true); }
+  if (e.key === "r" || e.key === "R") growth = 0;
+});
+addEventListener("keyup", (e) => { if (e.code === "Space") setWater(false); });
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
